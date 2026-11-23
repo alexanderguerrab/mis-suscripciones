@@ -1,18 +1,18 @@
 // ===== CONFIGURA ESTO =====
 const CONFIG = {
-  TOKEN: 'ROMANOs828$',     // la misma clave que pondrás en la app
-  EMAIL: 'alexanderguerrab@gmail.com',
-  TELEGRAM_BOT_TOKEN: '9255650786:AAEBHKaXdQD1qo4m1ij0C8JGTAh6bbR0udU',         // de @BotFather (opcional)
-  TELEGRAM_CHAT_ID: '9255650786',           // tu chat id (opcional)
-  HORA_AVISO: 8                   // hora del aviso diario
+  TOKEN: 'cambia-esta-clave',     // la misma clave que pondrás en la app
+  EMAIL: 'tucorreo@gmail.com',
+  TELEGRAM_BOT_TOKEN: '',         // de @BotFather (opcional)
+  TELEGRAM_CHAT_ID: '',           // tu chat id (opcional)
+  HORA_AVISO: 8,                  // hora del aviso diario
+  SHEET_ID: ''                    // déjalo vacío si el script se creó desde la hoja (Extensiones > Apps Script)
 };
 const HOJA = 'Suscripciones';
-const COLS = ['id', 'servicio', 'costo', 'vencimiento', 'avisar', 'notas', 'periodo'];
+const COLS = ['id', 'servicio', 'costo', 'vencimiento', 'avisar', 'notas', 'periodo', 'categoria'];
 
 // Ejecuta setup() UNA vez: crea la hoja y el aviso diario
 function setup() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sh = ss.getSheetByName(HOJA) || ss.insertSheet(HOJA);
+  const sh = hoja_();
   sh.getRange(1, 1, 1, COLS.length).setValues([COLS]);
   sh.getRange('D:D').setNumberFormat('@');
   ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'revisar').forEach(t => ScriptApp.deleteTrigger(t));
@@ -20,7 +20,18 @@ function setup() {
 }
 
 const ok_ = (email, token) => token === CONFIG.TOKEN && String(email || '').trim().toLowerCase() === CONFIG.EMAIL.toLowerCase();
-const hoja_ = () => SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HOJA);
+function hoja_() {
+  const ss = CONFIG.SHEET_ID ? SpreadsheetApp.openById(CONFIG.SHEET_ID) : SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(HOJA);
+  if (!sh) {
+    sh = ss.insertSheet(HOJA);
+    sh.getRange(1, 1, 1, COLS.length).setValues([COLS]);
+    sh.getRange('D:D').setNumberFormat('@');
+  }
+  // Hojas creadas antes de las categorías: agrega el encabezado que falta
+  if (sh.getLastColumn() < COLS.length) sh.getRange(1, 1, 1, COLS.length).setValues([COLS]);
+  return sh;
+}
 const fmt_ = d => d instanceof Date ? Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd') : String(d);
 const dias_ = iso => Math.round((new Date(iso + 'T00:00:00Z') - new Date(fmt_(new Date()) + 'T00:00:00Z')) / 864e5);
 const responder_ = o => ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
@@ -34,12 +45,12 @@ function leer_() {
   });
 }
 
-function doGet(e) {
+function doGet_(e) {
   if (!ok_(e.parameter.email, e.parameter.token)) return responder_({ error: 'credenciales' });
   return responder_({ items: leer_() });
 }
 
-function doPost(e) {
+function doPost_(e) {
   const b = JSON.parse(e.postData.contents);
   if (!ok_(b.email, b.token)) return responder_({ error: 'credenciales' });
   const lock = LockService.getScriptLock(); lock.waitLock(10000);
@@ -79,3 +90,7 @@ function revisar() {
       { method: 'post', payload: { chat_id: CONFIG.TELEGRAM_CHAT_ID, text: texto } });
   }
 }
+
+// Si el script falla, responde el motivo en JSON (en vez de una página de error de Google)
+function doGet(e) { try { return doGet_(e); } catch (err) { return responder_({ error: 'script', detalle: String(err) }); } }
+function doPost(e) { try { return doPost_(e); } catch (err) { return responder_({ error: 'script', detalle: String(err) }); } }

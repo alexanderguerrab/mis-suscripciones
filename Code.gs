@@ -1,9 +1,9 @@
 // ===== CONFIGURA ESTO =====
 const CONFIG = {
-  TOKEN: 'cambia-esta-clave',     // la misma clave que pondrás en la app
-  EMAIL: 'tucorreo@gmail.com',
-  TELEGRAM_BOT_TOKEN: '',         // de @BotFather (opcional)
-  TELEGRAM_CHAT_ID: '',           // tu chat id (opcional)
+  TOKEN: 'ROMANOs828$',     // la misma clave que pondrás en la app
+  EMAIL: 'alexanderguerrab@gmail.com',
+  TELEGRAM_BOT_TOKEN: '9255650786:AAEBHKaXdQD1qo4m1ij0C8JGTAh6bbR0udU',         // de @BotFather (opcional)
+  TELEGRAM_CHAT_ID: '9255650786',           // tu chat id (opcional)
   HORA_AVISO: 8                   // hora del aviso diario
 };
 const HOJA = 'Suscripciones';

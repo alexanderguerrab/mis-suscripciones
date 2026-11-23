@@ -1,0 +1,78 @@
+// ===== CONFIGURA ESTO =====
+const CONFIG = {
+  TOKEN: 'cambia-esta-clave',     // la misma clave que pondrás en la app
+  EMAIL: 'tucorreo@gmail.com',
+  TELEGRAM_BOT_TOKEN: '',         // de @BotFather (opcional)
+  TELEGRAM_CHAT_ID: '',           // tu chat id (opcional)
+  HORA_AVISO: 8                   // hora del aviso diario
+};
+const HOJA = 'Suscripciones';
+const COLS = ['id', 'servicio', 'costo', 'vencimiento', 'avisar', 'notas'];
+
+// Ejecuta setup() UNA vez: crea la hoja y el aviso diario
+function setup() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(HOJA) || ss.insertSheet(HOJA);
+  if (sh.getLastRow() === 0) sh.appendRow(COLS);
+  sh.getRange('D:D').setNumberFormat('@');
+  ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'revisar').forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('revisar').timeBased().everyDays(1).atHour(CONFIG.HORA_AVISO).create();
+}
+
+const hoja_ = () => SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HOJA);
+const fmt_ = d => d instanceof Date ? Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd') : String(d);
+const dias_ = iso => Math.round((new Date(iso + 'T00:00:00Z') - new Date(fmt_(new Date()) + 'T00:00:00Z')) / 864e5);
+const responder_ = o => ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
+
+function leer_() {
+  const v = hoja_().getDataRange().getValues(); v.shift();
+  return v.filter(r => r[0]).map(r => {
+    const o = {}; COLS.forEach((c, i) => o[c] = r[i]);
+    o.vencimiento = fmt_(o.vencimiento);
+    return o;
+  });
+}
+
+function doGet(e) {
+  if (e.parameter.token !== CONFIG.TOKEN) return responder_({ error: 'clave' });
+  return responder_({ items: leer_() });
+}
+
+function doPost(e) {
+  const b = JSON.parse(e.postData.contents);
+  if (b.token !== CONFIG.TOKEN) return responder_({ error: 'clave' });
+  const lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    const sh = hoja_();
+    const ids = sh.getRange(1, 1, sh.getLastRow(), 1).getValues().flat();
+    const id = b.id || (b.item && b.item.id);
+    const fila = ids.indexOf(id) + 1;
+    if (b.action === 'delete') {
+      if (fila > 1) sh.deleteRow(fila);
+    } else {
+      const it = b.item;
+      const row = COLS.map(c => it[c] ?? '');
+      if (fila > 1) sh.getRange(fila, 1, 1, COLS.length).setValues([row]); else sh.appendRow(row);
+    }
+    return responder_({ ok: true });
+  } finally { lock.releaseLock(); }
+}
+
+// Se ejecuta cada día: avisa por correo y Telegram
+function revisar() {
+  const lista = leer_().map(s => ({ ...s, d: dias_(s.vencimiento) }));
+  const vencidas = lista.filter(s => s.d < 0);
+  const pronto = lista.filter(s => s.d >= 0 && s.d <= Number(s.avisar || 7));
+  if (!vencidas.length && !pronto.length) return;
+  const linea = s => `• ${s.servicio} (${s.costo || 's/costo'}): ` +
+    (s.d < 0 ? `venció hace ${-s.d} día(s)` : s.d === 0 ? 'vence HOY' : `vence en ${s.d} día(s)`) + ` [${s.vencimiento}]`;
+  const texto = [
+    vencidas.length ? '⛔ VENCIDAS\n' + vencidas.map(linea).join('\n') : '',
+    pronto.length ? '⏰ POR VENCER\n' + pronto.map(linea).join('\n') : ''
+  ].filter(Boolean).join('\n\n');
+  MailApp.sendEmail(CONFIG.EMAIL, `Suscripciones: ${vencidas.length + pronto.length} requieren atención`, texto);
+  if (CONFIG.TELEGRAM_BOT_TOKEN && CONFIG.TELEGRAM_CHAT_ID) {
+    UrlFetchApp.fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/sendMessage`,
+      { method: 'post', payload: { chat_id: CONFIG.TELEGRAM_CHAT_ID, text: texto } });
+  }
+}

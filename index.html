@@ -34,11 +34,12 @@ h2{margin:0 0 4px;font-size:1.15rem}
 label{display:block;margin:10px 0 4px;font-size:.9rem;color:var(--mut)}
 input,select{width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
 .acc{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+#lerr{color:var(--bad);min-height:1.2em;margin:8px 0 0;font-size:.9rem}
 </style></head>
 <body><main>
-<header><h1>Mis suscripciones</h1><button id="cfgbtn" aria-label="Ajustes">Ajustes</button></header>
+<header><h1>Mis suscripciones</h1><button id="salir">Cerrar sesión</button></header>
 <div id="alerta" hidden></div>
-<p id="off" hidden>Sin conexión o clave incorrecta. Mostrando los últimos datos guardados.</p>
+<p id="off" hidden>Sin conexión. Mostrando los últimos datos guardados.</p>
 <ul id="lista"></ul>
 <button id="add" class="pri">Agregar suscripción</button>
 </main>
@@ -58,17 +59,20 @@ input,select{width:100%;font:inherit;padding:10px;border:1px solid var(--line);b
 <button type="button" id="cancel">Cancelar</button>
 </div></form></dialog>
 
-<dialog id="cfg"><form id="g">
-<h2>Conectar con tu hoja</h2>
-<label>URL de la app web (termina en /exec)<input name="url" type="url" required></label>
-<label>Clave<input name="token" required></label>
-<div class="acc"><button class="pri">Guardar y conectar</button></div>
+<dialog id="login"><form id="g">
+<h2>Entrar</h2>
+<label>Correo<input name="correo" type="email" autocomplete="username" required></label>
+<label>Clave<input name="token" type="password" autocomplete="current-password" required></label>
+<p id="lerr" role="alert"></p>
+<div class="acc"><button class="pri">Entrar</button></div>
 </form></dialog>
 
 <script>
 const $ = s => document.querySelector(s), f = $('#f'), g = $('#g');
 const CAMPOS = ['servicio', 'costo', 'vencimiento', 'avisar', 'notas', 'periodo'];
-let cfg = JSON.parse(localStorage.getItem('cfg') || '{}'), items = JSON.parse(localStorage.getItem('items') || '[]'), editId = null;
+// Pega aquí la URL de tu implementación de Apps Script (termina en /exec)
+const API_URL = 'PEGA_AQUI_TU_URL_EXEC';
+let cfg = JSON.parse(localStorage.getItem('sesion') || '{}'), items = JSON.parse(localStorage.getItem('items') || '[]'), editId = null;
 const hoy = () => { const d = new Date(); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()); };
 const dias = iso => Math.round((Date.parse(iso + 'T00:00:00Z') - hoy()) / 864e5);
 const estado = s => { const d = dias(s.vencimiento); return d < 0 ? 'vencida' : d <= (+s.avisar || 7) ? 'pronto' : 'ok'; };
@@ -86,19 +90,26 @@ function render() {
   a.textContent = [v && `${v} vencida${v > 1 ? 's' : ''}`, p && `${p} por vencer`].filter(Boolean).join(' · ');
 }
 
+const logueado = () => cfg.correo && cfg.token;
+const consulta = c => `${API_URL}?email=${encodeURIComponent(c.correo)}&token=${encodeURIComponent(c.token)}`;
+function abrirLogin(msg) { $('#lerr').textContent = msg || ''; if (!$('#login').open) $('#login').showModal(); }
+function salir(msg) {
+  cfg = {}; items = []; localStorage.removeItem('sesion'); localStorage.removeItem('items');
+  $('#off').hidden = true; render(); abrirLogin(msg);
+}
+
 async function cargar() {
+  if (!logueado()) { items = []; localStorage.removeItem('items'); render(); return abrirLogin(); }
   render();
-  if (!cfg.url) return $('#cfg').showModal();
-  try {
-    const j = await (await fetch(`${cfg.url}?token=${encodeURIComponent(cfg.token)}`)).json();
-    if (j.error) throw 0;
-    items = j.items; localStorage.setItem('items', JSON.stringify(items)); $('#off').hidden = true;
-  } catch { $('#off').hidden = false; }
+  let j;
+  try { j = await (await fetch(consulta(cfg))).json(); } catch { $('#off').hidden = false; return render(); }
+  if (j.error) return salir('Tu sesión ya no es válida. Entra de nuevo.');
+  items = j.items; localStorage.setItem('items', JSON.stringify(items)); $('#off').hidden = true;
   render();
 }
 
 async function enviar(body) {
-  const j = await (await fetch(cfg.url, { method: 'POST', body: JSON.stringify({ token: cfg.token, ...body }) })).json();
+  const j = await (await fetch(API_URL, { method: 'POST', body: JSON.stringify({ email: cfg.correo, token: cfg.token, ...body }) })).json();
   if (j.error) throw 0;
 }
 
@@ -135,8 +146,19 @@ $('#cancel').onclick = () => $('#form').close();
 $('#add').onclick = () => abrir();
 $('#lista').onclick = e => { const li = e.target.closest('.fila'); if (li) abrir(li.dataset.id); };
 $('#lista').onkeydown = e => { if (e.key === 'Enter') e.target.click(); };
-$('#cfgbtn').onclick = () => { g.url.value = cfg.url || ''; g.token.value = cfg.token || ''; $('#cfg').showModal(); };
-g.onsubmit = e => { e.preventDefault(); cfg = { url: g.url.value.trim(), token: g.token.value.trim() }; localStorage.setItem('cfg', JSON.stringify(cfg)); $('#cfg').close(); cargar(); };
+$('#salir').onclick = () => { if (confirm('¿Cerrar sesión? Se borrarán los datos guardados en este dispositivo (no los de tu hoja).')) salir(); };
+$('#login').oncancel = e => e.preventDefault();
+g.onsubmit = async e => {
+  e.preventDefault();
+  if (API_URL.includes('PEGA_AQUI')) return ($('#lerr').textContent = 'Falta pegar la URL del script en index.html.');
+  const c = { correo: g.correo.value.trim(), token: g.token.value.trim() };
+  $('#lerr').textContent = 'Entrando…';
+  try {
+    const j = await (await fetch(consulta(c))).json();
+    if (j.error) return ($('#lerr').textContent = 'Correo o clave incorrectos.');
+  } catch { return ($('#lerr').textContent = 'No se pudo conectar. Revisa tu internet y la URL del script.'); }
+  cfg = c; localStorage.setItem('sesion', JSON.stringify(cfg)); g.reset(); $('#login').close(); cargar();
+};
 document.addEventListener('visibilitychange', () => { if (!document.hidden) cargar(); });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 cargar();

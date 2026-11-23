@@ -1,9 +1,9 @@
 // ===== CONFIGURA ESTO =====
 const CONFIG = {
-  TOKEN: 'ROMANOs828$',     // la misma clave que pondrás en la app
-  EMAIL: 'alexanderguerrab@gmail.com',
-  TELEGRAM_BOT_TOKEN: '9255650786:AAEBHKaXdQD1qo4m1ij0C8JGTAh6bbR0udU',         // de @BotFather (opcional)
-  TELEGRAM_CHAT_ID: '9255650786',           // tu chat id (opcional)
+  TOKEN: 'cambia-esta-clave',     // la misma clave que pondrás en la app
+  EMAIL: 'tucorreo@gmail.com',
+  TELEGRAM_BOT_TOKEN: '',         // de @BotFather (opcional)
+  TELEGRAM_CHAT_ID: '',           // tu chat id (opcional)
   HORA_AVISO: 8                   // hora del aviso diario
 };
 const HOJA = 'Suscripciones';
@@ -19,6 +19,7 @@ function setup() {
   ScriptApp.newTrigger('revisar').timeBased().everyDays(1).atHour(CONFIG.HORA_AVISO).create();
 }
 
+const ok_ = (email, token) => token === CONFIG.TOKEN && String(email || '').trim().toLowerCase() === CONFIG.EMAIL.toLowerCase();
 const hoja_ = () => SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HOJA);
 const fmt_ = d => d instanceof Date ? Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd') : String(d);
 const dias_ = iso => Math.round((new Date(iso + 'T00:00:00Z') - new Date(fmt_(new Date()) + 'T00:00:00Z')) / 864e5);
@@ -34,13 +35,13 @@ function leer_() {
 }
 
 function doGet(e) {
-  if (e.parameter.token !== CONFIG.TOKEN) return responder_({ error: 'clave' });
+  if (!ok_(e.parameter.email, e.parameter.token)) return responder_({ error: 'credenciales' });
   return responder_({ items: leer_() });
 }
 
 function doPost(e) {
   const b = JSON.parse(e.postData.contents);
-  if (b.token !== CONFIG.TOKEN) return responder_({ error: 'clave' });
+  if (!ok_(b.email, b.token)) return responder_({ error: 'credenciales' });
   const lock = LockService.getScriptLock(); lock.waitLock(10000);
   try {
     const sh = hoja_();

@@ -7,13 +7,13 @@ const CONFIG = {
   HORA_AVISO: 8                   // hora del aviso diario
 };
 const HOJA = 'Suscripciones';
-const COLS = ['id', 'servicio', 'costo', 'vencimiento', 'avisar', 'notas'];
+const COLS = ['id', 'servicio', 'costo', 'vencimiento', 'avisar', 'notas', 'periodo'];
 
 // Ejecuta setup() UNA vez: crea la hoja y el aviso diario
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName(HOJA) || ss.insertSheet(HOJA);
-  if (sh.getLastRow() === 0) sh.appendRow(COLS);
+  sh.getRange(1, 1, 1, COLS.length).setValues([COLS]);
   sh.getRange('D:D').setNumberFormat('@');
   ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'revisar').forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('revisar').timeBased().everyDays(1).atHour(CONFIG.HORA_AVISO).create();
@@ -62,7 +62,9 @@ function doPost(e) {
 function revisar() {
   const lista = leer_().map(s => ({ ...s, d: dias_(s.vencimiento) }));
   const vencidas = lista.filter(s => s.d < 0);
-  const pronto = lista.filter(s => s.d >= 0 && s.d <= Number(s.avisar || 7));
+  // Avisos escalonados: el día del plazo, y luego a 14, 7, 3, 1 y 0 días
+  const hitos = s => [Number(s.avisar || 7), 14, 7, 3, 1, 0].filter(h => h <= Number(s.avisar || 7));
+  const pronto = lista.filter(s => s.d >= 0 && hitos(s).includes(s.d));
   if (!vencidas.length && !pronto.length) return;
   const linea = s => `• ${s.servicio} (${s.costo || 's/costo'}): ` +
     (s.d < 0 ? `venció hace ${-s.d} día(s)` : s.d === 0 ? 'vence HOY' : `vence en ${s.d} día(s)`) + ` [${s.vencimiento}]`;

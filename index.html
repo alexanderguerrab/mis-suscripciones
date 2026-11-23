@@ -15,7 +15,7 @@ main{max-width:560px;margin:auto;padding:0 16px}
 header{display:flex;justify-content:space-between;align-items:center;padding:20px 0 12px}
 h1{font-size:1.5rem;margin:0}
 button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:10px 14px}
-button:focus-visible,input:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 .pri{background:var(--acc);color:var(--on);border-color:var(--acc);font-weight:600}
 #alerta{padding:12px 14px;border-radius:10px;margin-bottom:12px;font-weight:600;background:var(--card);border:1px solid var(--line);border-left:6px solid var(--c)}
 #alerta.vencida{--c:var(--bad)}#alerta.pronto{--c:var(--warn)}
@@ -32,7 +32,7 @@ dialog{border:0;border-radius:16px;padding:20px;width:min(92vw,420px);background
 dialog::backdrop{background:#0008}
 h2{margin:0 0 4px;font-size:1.15rem}
 label{display:block;margin:10px 0 4px;font-size:.9rem;color:var(--mut)}
-input{width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+input,select{width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
 .acc{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
 </style></head>
 <body><main>
@@ -48,11 +48,12 @@ input{width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-r
 <label>Servicio<input name="servicio" required></label>
 <label>Costo<input name="costo" placeholder="Ej. $9.99 / mes"></label>
 <label>Fecha de vencimiento<input name="vencimiento" type="date" required></label>
+<label>Se renueva<select name="periodo"><option value="mensual">Cada mes</option><option value="trimestral">Cada 3 meses</option><option value="semestral">Cada 6 meses</option><option value="anual">Cada año</option></select></label>
 <label>Avisar con (días de anticipación)<input name="avisar" type="number" min="0" value="7"></label>
 <label>Notas<input name="notas"></label>
 <div class="acc">
 <button class="pri">Guardar</button>
-<button type="button" id="mes">Sumar 1 mes</button>
+<button type="button" id="renovar">Renovar</button>
 <button type="button" id="del">Eliminar</button>
 <button type="button" id="cancel">Cancelar</button>
 </div></form></dialog>
@@ -66,6 +67,7 @@ input{width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-r
 
 <script>
 const $ = s => document.querySelector(s), f = $('#f'), g = $('#g');
+const CAMPOS = ['servicio', 'costo', 'vencimiento', 'avisar', 'notas', 'periodo'];
 let cfg = JSON.parse(localStorage.getItem('cfg') || '{}'), items = JSON.parse(localStorage.getItem('items') || '[]'), editId = null;
 const hoy = () => { const d = new Date(); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()); };
 const dias = iso => Math.round((Date.parse(iso + 'T00:00:00Z') - hoy()) / 864e5);
@@ -76,7 +78,7 @@ function render() {
   const l = [...items].sort((a, b) => a.vencimiento.localeCompare(b.vencimiento));
   $('#lista').innerHTML = l.length ? l.map(s => {
     const d = dias(s.vencimiento);
-    return `<li class="fila ${estado(s)}" data-id="${esc(s.id)}" tabindex="0"><b class="dias">${d === 0 ? 'Hoy' : Math.abs(d)}<small>${d < 0 ? 'de atraso' : d === 0 ? '' : d === 1 ? 'día' : 'días'}</small></b><div><strong>${esc(s.servicio)}</strong><span>${esc(s.costo)}${s.costo ? ' · ' : ''}${esc(s.vencimiento)}</span></div></li>`;
+    return `<li class="fila ${estado(s)}" data-id="${esc(s.id)}" tabindex="0"><b class="dias">${d === 0 ? 'Hoy' : Math.abs(d)}<small>${d < 0 ? 'de atraso' : d === 0 ? '' : d === 1 ? 'día' : 'días'}</small></b><div><strong>${esc(s.servicio)}</strong><span>${esc(s.costo)}${s.costo ? ' · ' : ''}${esc(s.periodo || 'mensual')} · ${esc(s.vencimiento)}</span></div></li>`;
   }).join('') : '<li class="vacio">Aún no tienes suscripciones. Toca “Agregar suscripción” para registrar la primera.</li>';
   const v = items.filter(s => estado(s) === 'vencida').length, p = items.filter(s => estado(s) === 'pronto').length, a = $('#alerta');
   a.hidden = !(v || p);
@@ -103,14 +105,14 @@ async function enviar(body) {
 function abrir(id) {
   editId = id || null;
   const s = items.find(x => x.id === id) || { avisar: 7 };
-  for (const k of ['servicio', 'costo', 'vencimiento', 'avisar', 'notas']) f[k].value = s[k] ?? '';
+  for (const k of CAMPOS) f[k].value = s[k] || (k === 'periodo' ? 'mensual' : k === 'avisar' ? s[k] ?? '' : '');
   $('#del').hidden = !id; $('#form').showModal();
 }
 
 f.onsubmit = async e => {
   e.preventDefault();
   const it = { id: editId || crypto.randomUUID() };
-  for (const k of ['servicio', 'costo', 'vencimiento', 'avisar', 'notas']) it[k] = f[k].value;
+  for (const k of CAMPOS) it[k] = f[k].value;
   items = editId ? items.map(x => x.id === editId ? it : x) : [...items, it];
   localStorage.setItem('items', JSON.stringify(items)); render(); $('#form').close();
   try { await enviar({ action: 'save', item: it }); } catch { $('#off').hidden = false; }
@@ -121,10 +123,14 @@ $('#del').onclick = async () => {
   localStorage.setItem('items', JSON.stringify(items)); render(); $('#form').close();
   try { await enviar({ action: 'delete', id }); } catch { $('#off').hidden = false; }
 };
-$('#mes').onclick = () => {
-  const d = new Date((f.vencimiento.value || new Date().toISOString().slice(0, 10)) + 'T00:00:00Z');
-  d.setUTCMonth(d.getUTCMonth() + 1); f.vencimiento.value = d.toISOString().slice(0, 10);
+const PASO = { mensual: 1, trimestral: 3, semestral: 6, anual: 12 }, AVISO = { mensual: 7, trimestral: 10, semestral: 15, anual: 30 };
+$('#renovar').onclick = () => {
+  const m = PASO[f.periodo.value] || 1, h = hoy();
+  const d = new Date((f.vencimiento.value || new Date(h).toISOString().slice(0, 10)) + 'T00:00:00Z');
+  do { d.setUTCMonth(d.getUTCMonth() + m); } while (+d <= h);
+  f.vencimiento.value = d.toISOString().slice(0, 10);
 };
+f.periodo.onchange = () => { if (f.avisar.value === '' || Object.values(AVISO).includes(+f.avisar.value)) f.avisar.value = AVISO[f.periodo.value]; };
 $('#cancel').onclick = () => $('#form').close();
 $('#add').onclick = () => abrir();
 $('#lista').onclick = e => { const li = e.target.closest('.fila'); if (li) abrir(li.dataset.id); };

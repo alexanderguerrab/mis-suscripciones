@@ -70,7 +70,7 @@ input,select{width:100%;font:inherit;padding:10px;border:1px solid var(--line);b
 <script>
 const $ = s => document.querySelector(s), f = $('#f'), g = $('#g');
 const CAMPOS = ['servicio', 'costo', 'vencimiento', 'avisar', 'notas', 'periodo'];
-// Pega aquí la URL de tu implementación de Apps Script (termina en /exec)
+// https://script.google.com/macros/s/AKfycbyzgoqI6rUz4haqJCUkovdzMGp04RZSBTh_ZU4knooDVmDr7WBUw-Cr4A0e-aT13GjH/exec
 const API_URL = 'https://script.google.com/macros/s/AKfycbyzgoqI6rUz4haqJCUkovdzMGp04RZSBTh_ZU4knooDVmDr7WBUw-Cr4A0e-aT13GjH/exec';
 let cfg = JSON.parse(localStorage.getItem('sesion') || '{}'), items = JSON.parse(localStorage.getItem('items') || '[]'), editId = null;
 const hoy = () => { const d = new Date(); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()); };
